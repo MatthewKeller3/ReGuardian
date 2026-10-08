@@ -1,182 +1,84 @@
-# ReGuardian 🛡️
+# ReGuardian
 
-AI-Powered Smart Contract Reentrancy Vulnerability Detection
+**Reentrancy vulnerability scanner for Solidity smart contracts** — the vulnerability class behind $879M+ in documented losses (The DAO, Euler Finance, Cream Finance, Radiant Capital, and more).
 
-[![Security Scan](https://img.shields.io/badge/security-scan-green)](https://github.com/YOUR_USERNAME/ReGuardian/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-12%20passing-green.svg)](tests/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Overview
+## What it does
 
-ReGuardian is a comprehensive security analysis tool designed to detect reentrancy vulnerabilities in smart contracts. It combines traditional static analysis with modern AI/ML techniques to provide thorough security assessments.
+ReGuardian statically analyzes Solidity source for the four major reentrancy classes, each with a dedicated detector:
 
-**Total losses from reentrancy attacks: $879M+** (Euler Finance, Cream Finance, Vyper/Curve, Radiant Capital, KyberSwap, The DAO, etc.)
+| Detector | Attack class | Real-world example |
+|---|---|---|
+| Mono-function | External call before state update in one function | The DAO ($60M, 2016) |
+| Cross-function | Shared state exploited across functions | Euler Finance ($197M, 2023) |
+| Cross-contract | User-controlled addresses & token callbacks (ERC777/ERC721) | Cream Finance ($130M, 2021) |
+| Read-only | View-function price manipulation during reentrancy | Sonne Finance ($20M, 2024) |
 
-## 🎯 Features
+Each finding includes the vulnerable code location, an attack-vector walkthrough, severity + confidence score, and a concrete fix suggestion (CEI pattern, ReentrancyGuard, pull-over-push).
 
-- **Multi-Type Reentrancy Detection**
-  - Mono-function reentrancy
-  - Cross-function reentrancy
-  - Cross-contract reentrancy
-  - Read-only reentrancy
-  
-- **Integration with Industry Tools**
-  - Slither static analysis
-  - Mythril symbolic execution
-  - Echidna fuzzing
-  - OpenZeppelin security patterns
-
-- **AI-Enhanced Analysis**
-  - Pattern recognition in bytecode
-  - Control flow graph analysis
-  - Natural language vulnerability reports
-
-## 📊 Notable Attacks Database
-
-| Protocol | Date | Loss | Attack Type |
-|----------|------|------|-------------|
-| Euler Finance | Mar 2023 | $197M | Cross-function reentrancy |
-| Cream Finance | Oct 2021 | $130M | ERC777 cross-contract |
-| Vyper/Curve | Jul 2023 | $73M | Compiler bug |
-| The DAO | Jun 2016 | $60M | Classic reentrancy |
-| Radiant Capital | Oct 2024 | $51M | Cross-contract callback |
-| KyberSwap | Nov 2023 | $49M | Cross-function tick manipulation |
-| Hedgey Finance | Apr 2024 | $45M | Token approval callback |
-| Penpie | Sep 2024 | $27M | Pendle market callback |
-| Sonne Finance | May 2024 | $20M | Compound V2 fork donation |
-
-*Database includes 39 documented attacks from 2016-2024. See `/data/attacks/attack_database.json` for full details.*
-
-## 🚀 Quick Start
+## Quick start
 
 ```bash
-# Install dependencies
 pip install -r requirements-minimal.txt
 
-# Option 1: Web Interface (Recommended for users)
-python3 server.py
-# Open http://localhost:8000 in your browser
+# Web UI (paste/upload a contract, get a visual report)
+python3 server.py           # → http://localhost:8000
 
-# Option 2: Unified CLI Scanner (All tools in one command)
+# CLI — scan a single contract with all detectors
 python3 scan.py contracts/examples/vulnerable_wallet.sol
 
-# Option 3: Individual CLI commands
+# CLI — full toolkit (analyze / report / project scan)
 python3 reguardian.py analyze contracts/examples/vulnerable_wallet.sol --mode standard
 python3 reguardian.py report contracts/examples/vulnerable_wallet.sol -o report.html
-python3 reguardian.py scan /path/to/project
 ```
 
-## 🖥️ Web Interface
+## Example output
 
-The easiest way to use ReGuardian is through the web interface:
+Running against the included DAO-style vulnerable wallet:
+
+```
+$ python3 scan.py contracts/examples/vulnerable_wallet.sol
+
+[CRITICAL] Reentrancy Vulnerability in withdraw()
+  contracts/examples/vulnerable_wallet.sol:14-19
+  External call (.call{value:}) precedes state update (balances[msg.sender] = 0)
+  Confidence: 0.85
+  Fix: apply Checks-Effects-Interactions or OpenZeppelin nonReentrant
+```
+
+## How it works
+
+- **Custom detectors** (`src/detectors/reentrancy/`) — brace-aware Solidity function extraction + ordered pattern analysis (external call vs. state write positions, guard detection)
+- **Slither integration** (`src/analyzers/slither_analyzer.py`) — cross-checks findings against Slither's reentrancy detectors when installed
+- **Mythril integration** (`src/analyzers/mythril_analyzer.py`) — optional symbolic-execution pass
+- **ML classifier** (`src/ml/`) — scikit-learn feature-extraction pipeline (random forest / gradient boosting) with a rule-based fallback; training pipeline included, pre-trained model not yet shipped
+- **Attack database** (`data/attacks/`) — 39 documented reentrancy attacks (2016–2024) used for pattern reference and shown in the web UI
+- **Web UI + JSON API** (`server.py`) — analysis endpoint, severity breakdown, HTML/JSON export
+
+## Testing
 
 ```bash
-python3 server.py
+python3 -m pytest tests/ -v    # 12 tests: detection, safe-contract false-positive checks, guard recognition
 ```
 
-Then open **http://localhost:8000** in your browser.
+Example contracts for each vulnerability class live in `contracts/examples/`, with a guarded counterpart in `contracts/safe/`.
 
-**Features:**
-- 📝 Paste or upload Solidity/Vyper code
-- 🔍 One-click analysis with all tools
-- 📊 Visual severity breakdown
-- 📈 Risk score visualization  
-- 💡 Detailed findings with fix suggestions
-- 📥 Export to JSON or HTML report
-- 📚 Historical attack database
+## Honest limitations
 
-![ReGuardian Web Interface](docs/screenshot.png)
+- Detection is **pattern-based, not AST/CFG-based** — it will produce false positives, especially on the cross-function and read-only detectors. Findings are audit *leads*, not verdicts.
+- The ML detector ships untrained and falls back to heuristics until you train it on labeled data.
+- No automated tool replaces a manual audit. Use ReGuardian as one layer of a defense-in-depth review.
 
-## 🌐 API Endpoints
+## Roadmap
 
-```bash
-# Health check
-curl http://localhost:8000/health
+- [ ] AST-based parsing (solc / tree-sitter) to replace regex extraction
+- [ ] Echidna fuzzing integration
+- [ ] Ship a trained classifier + labeled dataset
+- [ ] False-positive suppression via data-flow analysis
 
-# Analyze contract source
-curl -X POST http://localhost:8000/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"source_code": "contract Test { ... }", "mode": "standard"}'
+## License
 
-# Get attack database
-curl http://localhost:8000/attacks
-```
-
-## 📁 Project Structure
-
-```
-ReGuardian/
-├── src/
-│   ├── analyzers/           # Core analysis engines
-│   │   ├── static/          # Static analysis (Slither integration)
-│   │   ├── symbolic/        # Symbolic execution (Mythril)
-│   │   ├── fuzzing/         # Fuzz testing (Echidna/Foundry)
-│   │   └── ai/              # ML-based detection
-│   ├── detectors/           # Vulnerability detectors
-│   │   ├── reentrancy/      # Reentrancy-specific detectors
-│   │   └── patterns/        # Known attack patterns
-│   ├── reporters/           # Report generation
-│   └── utils/               # Utility functions
-├── contracts/
-│   ├── examples/            # Example vulnerable contracts
-│   ├── safe/                # OpenZeppelin-protected examples
-│   └── tests/               # Test contracts
-├── data/
-│   ├── attacks/             # Historical attack data
-│   └── patterns/            # Vulnerability patterns
-├── tests/                   # Unit and integration tests
-├── docs/                    # Documentation
-└── config/                  # Configuration files
-```
-
-## 🔧 Configuration
-
-Create a `config.yaml` file:
-
-```yaml
-analysis:
-  engines:
-    - slither
-    - mythril
-    - custom_ai
-  
-  reentrancy:
-    check_cross_function: true
-    check_cross_contract: true
-    check_read_only: true
-    
-  severity_threshold: medium
-  
-openzeppelin:
-  check_reentrancy_guard: true
-  suggest_fixes: true
-```
-
-## 🛠️ Tech Stack
-
-- **Python 3.10+** - Core analysis engine
-- **Solidity** - Smart contract analysis
-- **Slither** - Static analysis framework
-- **Mythril** - Security analysis tool
-- **OpenZeppelin** - Security patterns & guards
-- **PyTorch/TensorFlow** - ML models (optional)
-- **React/Next.js** - Web dashboard (optional)
-
-## 📖 Documentation
-
-- [Installation Guide](docs/installation.md)
-- [Usage Guide](docs/usage.md)
-- [API Reference](docs/api.md)
-- [Contributing](docs/contributing.md)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](docs/contributing.md) for details.
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## ⚠️ Disclaimer
-
-ReGuardian is a security analysis tool and should be used as part of a comprehensive security audit process. No automated tool can guarantee 100% vulnerability detection. Always combine automated analysis with manual code review.
+MIT

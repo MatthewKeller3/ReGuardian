@@ -19,6 +19,7 @@ from .base import (
     ReentrancyType,
     Severity,
     VulnerabilityLocation,
+    extract_solidity_functions,
 )
 
 
@@ -125,32 +126,20 @@ class CrossFunctionReentrancyDetector(ReentrancyDetector):
         - External calls made
         - Protection mechanisms
         """
-        functions = {}
+        functions = extract_solidity_functions(source_code)
         
-        # Function pattern
-        func_pattern = r'function\s+(\w+)\s*\([^)]*\)([^{]*)\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
-        
-        for match in re.finditer(func_pattern, source_code, re.DOTALL):
-            func_name = match.group(1)
-            func_modifiers = match.group(2)
-            func_body = match.group(3)
-            func_code = match.group(0)
-            
-            start_pos = match.start()
-            start_line = source_code[:start_pos].count('\n') + 1
+        for func_info in functions.values():
+            func_body = func_info['body']
+            func_modifiers = func_info['modifiers']
             
             # Analyze function
-            functions[func_name] = {
-                'code': func_code,
-                'body': func_body,
-                'modifiers': func_modifiers,
-                'start_line': start_line,
+            func_info.update({
                 'has_external_call': self._has_external_call(func_body),
-                'has_protection': self._has_reentrancy_protection(func_code),
+                'has_protection': self._has_reentrancy_protection(func_info['code']),
                 'state_reads': self._find_state_reads(func_body),
                 'state_writes': self._find_state_writes(func_body),
                 'visibility': self._get_visibility(func_modifiers),
-            }
+            })
         
         return functions
     

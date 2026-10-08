@@ -4,11 +4,58 @@ Base Reentrancy Detector
 Abstract base class for all reentrancy detection implementations.
 """
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+
+
+def extract_solidity_functions(source_code: str) -> Dict[str, Dict[str, Any]]:
+    """
+    Extract function definitions from Solidity source code.
+
+    Uses brace counting to capture full function bodies, since a plain
+    regex cannot handle nested braces (e.g. .call{value: ...}, if/for blocks).
+
+    Returns:
+        Dictionary mapping function names to:
+        - code: full function source (signature + body)
+        - params: parameter list text
+        - modifiers: text between the parameter list and the opening brace
+        - body: function body (between the outer braces)
+        - start_line: 1-based line number of the signature
+    """
+    functions = {}
+    sig_pattern = r'function\s+(\w+)\s*\(([^)]*)\)([^{;]*)\{'
+
+    for match in re.finditer(sig_pattern, source_code, re.DOTALL):
+        body_start = match.end() - 1  # position of opening brace
+        depth = 0
+        end_pos = None
+        for pos in range(body_start, len(source_code)):
+            char = source_code[pos]
+            if char == '{':
+                depth += 1
+            elif char == '}':
+                depth -= 1
+                if depth == 0:
+                    end_pos = pos + 1
+                    break
+
+        if end_pos is None:
+            continue  # Unbalanced braces; skip
+
+        functions[match.group(1)] = {
+            'code': source_code[match.start():end_pos],
+            'params': match.group(2),
+            'modifiers': match.group(3),
+            'body': source_code[body_start + 1:end_pos - 1],
+            'start_line': source_code[:match.start()].count('\n') + 1,
+        }
+
+    return functions
 
 
 class Severity(Enum):

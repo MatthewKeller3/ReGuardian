@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv*/
+venv/
+env/
+
+# Reports & artifacts
+*.html.report
+report.html
+reports/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp

@@ -18,6 +18,7 @@ from .base import (
     ReentrancyType,
     Severity,
     VulnerabilityLocation,
+    extract_solidity_functions,
 )
 
 
@@ -128,12 +129,12 @@ class ReadOnlyReentrancyDetector(ReentrancyDetector):
         """Find view/pure functions that might be exploitable."""
         view_functions = []
         
-        # Pattern for view/pure functions
-        pattern = r'function\s+(\w+)\s*\([^)]*\)\s+[^{]*(view|pure)[^{]*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
-        
-        for match in re.finditer(pattern, source_code, re.DOTALL):
-            func_name = match.group(1)
-            func_body = match.group(3)
+        for func_name, func_info in extract_solidity_functions(source_code).items():
+            # Only consider view/pure functions
+            if not re.search(r'\b(view|pure)\b', func_info['modifiers']):
+                continue
+            
+            func_body = func_info['body']
             
             # Check if it's a pricing-related function
             is_pricing = any(
@@ -144,13 +145,11 @@ class ReadOnlyReentrancyDetector(ReentrancyDetector):
             # Find state variables read
             state_reads = self._extract_state_reads(func_body)
             
-            start_line = source_code[:match.start()].count('\n') + 1
-            
             view_functions.append({
                 'name': func_name,
-                'code': match.group(0),
+                'code': func_info['code'],
                 'body': func_body,
-                'start_line': start_line,
+                'start_line': func_info['start_line'],
                 'is_pricing': is_pricing,
                 'state_reads': state_reads,
             })
@@ -161,11 +160,8 @@ class ReadOnlyReentrancyDetector(ReentrancyDetector):
         """Find functions that make external calls."""
         external_functions = []
         
-        pattern = r'function\s+(\w+)\s*\([^)]*\)[^{]*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
-        
-        for match in re.finditer(pattern, source_code, re.DOTALL):
-            func_name = match.group(1)
-            func_body = match.group(2)
+        for func_name, func_info in extract_solidity_functions(source_code).items():
+            func_body = func_info['body']
             
             # Check for external calls
             has_external_call = bool(re.search(
@@ -177,13 +173,11 @@ class ReadOnlyReentrancyDetector(ReentrancyDetector):
                 # Find state variables written
                 state_writes = self._extract_state_writes(func_body)
                 
-                start_line = source_code[:match.start()].count('\n') + 1
-                
                 external_functions.append({
                     'name': func_name,
-                    'code': match.group(0),
+                    'code': func_info['code'],
                     'body': func_body,
-                    'start_line': start_line,
+                    'start_line': func_info['start_line'],
                     'state_writes': state_writes,
                 })
         

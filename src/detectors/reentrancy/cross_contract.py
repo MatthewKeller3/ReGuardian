@@ -19,6 +19,7 @@ from .base import (
     ReentrancyType,
     Severity,
     VulnerabilityLocation,
+    extract_solidity_functions,
 )
 
 
@@ -270,12 +271,11 @@ class CrossContractReentrancyDetector(ReentrancyDetector):
         vulnerabilities = []
         
         # Find functions with external calls to parameters
-        func_pattern = r'function\s+(\w+)\s*\(([^)]*)\)[^{]*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
+        functions = extract_solidity_functions(source_code)
         
-        for match in re.finditer(func_pattern, source_code, re.DOTALL):
-            func_name = match.group(1)
-            params = match.group(2)
-            func_body = match.group(3)
+        for func_name, func_info in functions.items():
+            params = func_info['params']
+            func_body = func_info['body']
             
             # Extract address parameters
             addr_params = re.findall(r'address\s+(\w+)', params)
@@ -292,11 +292,11 @@ class CrossContractReentrancyDetector(ReentrancyDetector):
                     if re.search(pattern, func_body):
                         # Check for protection
                         has_protection = bool(re.search(
-                            r'nonReentrant', match.group(0), re.IGNORECASE
+                            r'nonReentrant', func_info['code'], re.IGNORECASE
                         ))
                         
                         if not has_protection:
-                            start_line = source_code[:match.start()].count('\n') + 1
+                            start_line = func_info['start_line']
                             
                             vuln = ReentrancyVulnerability(
                                 id=str(uuid.uuid4()),
@@ -314,7 +314,7 @@ class CrossContractReentrancyDetector(ReentrancyDetector):
                                     contract_name="Unknown",
                                     function_name=func_name,
                                     line_start=start_line,
-                                    line_end=start_line + match.group(0).count('\n'),
+                                    line_end=start_line + func_info['code'].count('\n'),
                                 ),
                                 attack_vector=(
                                     f"1. Attacker calls {func_name}() with malicious contract address\n"
@@ -370,7 +370,7 @@ class CrossContractReentrancyDetector(ReentrancyDetector):
                 func_match = self._find_enclosing_function(source_code, match.start())
                 
                 if func_match:
-                    func_code = func_match.group(0)
+                    func_code = func_match['code']
                     has_protection = bool(re.search(
                         r'nonReentrant', func_code, re.IGNORECASE
                     ))
@@ -416,10 +416,9 @@ class CrossContractReentrancyDetector(ReentrancyDetector):
     
     def _find_enclosing_function(self, source_code: str, position: int):
         """Find the function that contains the given position."""
-        func_pattern = r'function\s+\w+\s*\([^)]*\)[^{]*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
-        
-        for match in re.finditer(func_pattern, source_code, re.DOTALL):
-            if match.start() <= position <= match.end():
-                return match
+        for func_info in extract_solidity_functions(source_code).values():
+            start = source_code.find(func_info['code'])
+            if start != -1 and start <= position <= start + len(func_info['code']):
+                return func_info
         
         return None

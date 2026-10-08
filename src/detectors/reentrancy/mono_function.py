@@ -18,6 +18,7 @@ from .base import (
     ReentrancyType,
     Severity,
     VulnerabilityLocation,
+    extract_solidity_functions,
 )
 
 
@@ -201,34 +202,17 @@ class MonoFunctionReentrancyDetector(ReentrancyDetector):
         Returns:
             Dictionary mapping function names to their code and metadata
         """
-        functions = {}
-        
-        # Simple regex-based extraction (for production, use proper AST parser)
-        # Pattern matches: function name(...) ... { ... }
-        func_pattern = r'function\s+(\w+)\s*\([^)]*\)[^{]*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
-        
-        lines = source_code.split('\n')
         current_contract = "Unknown"
         
         # Track current contract
-        for i, line in enumerate(lines):
+        for line in source_code.split('\n'):
             contract_match = re.search(r'contract\s+(\w+)', line)
             if contract_match:
                 current_contract = contract_match.group(1)
         
-        for match in re.finditer(func_pattern, source_code, re.DOTALL):
-            func_name = match.group(1)
-            func_code = match.group(0)
-            
-            # Calculate start line
-            start_pos = match.start()
-            start_line = source_code[:start_pos].count('\n') + 1
-            
-            functions[func_name] = {
-                'code': func_code,
-                'start_line': start_line,
-                'contract': current_contract,
-            }
+        functions = extract_solidity_functions(source_code)
+        for func_info in functions.values():
+            func_info['contract'] = current_contract
         
         return functions
     
